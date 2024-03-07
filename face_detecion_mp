@@ -1,0 +1,25 @@
+import mediapipe as mp 
+import cv2
+
+class FacePreprocessing:
+    def __init__(self):
+        self.mp_face_detection = mp.solutions.face_detection1
+        self.face_detection = self.mp_face_detection.FaceDetection()
+        self.face_size = (72, 72)
+
+    def process_frames(self, frame_list):
+        processed_frames = []
+        for frame in frame_list:
+            result = self.face_detection.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))      # Using mediapipe for face detection
+
+            if result.detections:
+                bboxC = result.detections[0].location_data.relative_bounding_box
+                ih, iw, _ = frame.shape
+                x, y, w, h = int(bboxC.xmin * iw), int(bboxC.ymin * ih), int(bboxC.width * iw), int(bboxC.height * ih)
+
+                # Croping the face
+                face = frame[y:y + h, x:x + w]
+                # Resizing the face frames
+                resized_face = cv2.resize(face, self.face_size, interpolation=cv2.INTER_AREA)
+
+                processed_frames.append(resized_face)
