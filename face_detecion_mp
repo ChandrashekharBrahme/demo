@@ -1,5 +1,39 @@
-import mediapipe as mp 
+import asyncio
+import streamlit as st
+from streamlit_webrtc import VideoTransformerBase, webrtc_streamer
+import av
+import mediapipe as mp
 import cv2
+# import TSCAN
+
+#TF_ENABLE_ONEDNN_OPTS=0
+
+class VideoTransformer(VideoTransformerBase):
+    def __init__(self):
+        super().__init__()
+        self.counter = 0
+        self.frame_list = []
+        #self.face_preprocessing = FacePreprocessing()
+
+    async def recv(self, frame):
+        if self.counter > 90:
+            self.counter = 0
+            self.frame_list = []
+
+        img = frame.to_ndarray(format="bgr24")
+        self.frame_list.append(img)
+        self.counter += 1 
+
+        # Pass the frame_list to face_preprocessing after every 90 frames
+        # if self.counter % 90 == 0:
+        #     await self.async_face_preprocessing()
+
+        return img
+
+    async def async_face_preprocessing(self):
+        processed_frames = await asyncio.to_thread(self.face_preprocessing.process_frames, self.frame_list)
+        # Now, processed_frames contains the preprocessed faces, you can further use or display them as needed
+        st.write("Processed Frames:", len(processed_frames))
 
 class FacePreprocessing:
     def __init__(self):
@@ -10,16 +44,35 @@ class FacePreprocessing:
     def process_frames(self, frame_list):
         processed_frames = []
         for frame in frame_list:
-            result = self.face_detection.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))      # Using mediapipe for face detection
+            # Use mediapipe for face detection
+            result = self.face_detection.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
             if result.detections:
+                # Get the bounding box of the face
                 bboxC = result.detections[0].location_data.relative_bounding_box
                 ih, iw, _ = frame.shape
                 x, y, w, h = int(bboxC.xmin * iw), int(bboxC.ymin * ih), int(bboxC.width * iw), int(bboxC.height * ih)
 
-                # Croping the face
+                # Crop the face
                 face = frame[y:y + h, x:x + w]
-                # Resizing the face frames
+
+                # Resize the face frames
                 resized_face = cv2.resize(face, self.face_size, interpolation=cv2.INTER_AREA)
 
+                # Append the processed face to the list
                 processed_frames.append(resized_face)
+
+        return processed_frames
+
+def main():
+    st.title("WebRTC Video Stream")
+
+    # Configure WebRTC streamer with custom transformer
+    webrtc_ctx = webrtc_streamer(
+        key="example",
+        video_processor_factory=VideoTransformer,
+        async_processing=True,  # Use async_processing instead of async_transform
+    )
+
+if __name__ == "__main__":
+    main()
