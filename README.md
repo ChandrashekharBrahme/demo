@@ -1,5 +1,5 @@
-# demo
+# use for practice
 
-demo project
+use for practice 
 <br>
 Author CSB
