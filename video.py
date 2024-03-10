@@ -6,6 +6,7 @@ import mediapipe as mp
 import torch
 from TS_CAN import TSCAN
 from tqdm import tqdm
+from evaluation.metrics import calculate_metrics
 def read_video(video_file):
     """Reads a video file, returns frames(T,H,W,3) """
     VidObj = cv2.VideoCapture(video_file)
@@ -132,16 +133,27 @@ def prediction(frames, model_path='D:\jayesh\predict\pythonProject3\PURE_TSCAN.p
 
 
             for idx in range(batch_size):
-                subj_index = test_batch[2][idx]
-                sort_index = int(test_batch[3][idx])
+                subj_index = test_batch[0][idx]
+                #sort_index = int(test_batch[1][idx])
+                #sort_index = int(test_batch[1][idx].item()) if test_batch[1][idx].numel() == 1 else test_batch[1][idx].tolist()
+                # sort_index = tuple(test_batch[1][idx].tolist()) if isinstance(test_batch[1][idx], list) else test_batch[1][idx].item()
+                if test_batch[1][idx].numel() == 1:
+                    sort_index = test_batch[1][idx].item()
+                else:
+                    sort_index = tuple(test_batch[1][idx].tolist())
+
+                if subj_index not in predictions.keys():
+                    predictions[subj_index] = dict()
+
+
 
                 if subj_index not in predictions.keys():
                     predictions[subj_index] = dict()
                     predictions[subj_index][sort_index] = pred_ppg_test[idx * chunk_len:(idx + 1) * chunk_len]
 
     print('')
-    # calculate_metrics(predictions, config)
-    pass
+    calculate_metrics(predictions)
+
 
 
 
