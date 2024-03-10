@@ -4,9 +4,8 @@ import numpy as np
 import cv2
 import mediapipe as mp
 import torch
-import TSCAN
-import tqdm
-
+from TS_CAN import TSCAN
+from tqdm import tqdm
 def read_video(video_file):
     """Reads a video file, returns frames(T,H,W,3) """
     VidObj = cv2.VideoCapture(video_file)
@@ -66,8 +65,8 @@ def diff_normalize_data(data):
     n, h, w, c = data.shape
     print(f"\n N:{n}  C;{c} H:{h} W:{w} \n")
     diffnormalized_len = n - 1
-    diffnormalized_data = np.zeros((diffnormalized_len, h, w, c), dtype=np.float32)
-    diffnormalized_data_padding = np.zeros((1, h, w, c), dtype=np.float32)
+    diffnormalized_data = np.zeros((diffnormalized_len, h, w, c), dtype=np.double)
+    diffnormalized_data_padding = np.zeros((1, h, w, c), dtype=np.double)
     for j in range(diffnormalized_len):
         diffnormalized_data[j, :, :, :] = (data[j + 1, :, :, :] - data[j, :, :, :]) / (
                 data[j + 1, :, :, :] + data[j, :, :, :] + 1e-7)
@@ -86,6 +85,7 @@ def standardized_data(data):
 def process(frames):
     data=list()
     f_c = processed_frames.copy()
+    print("processed frames shape ", np.array(f_c).shape)
     data.append(diff_normalize_data(f_c))
     data.append(standardized_data(f_c))
 
@@ -97,57 +97,50 @@ def process(frames):
     frames_clips = chunk(data)
     return frames_clips
 
-def prediction(self):
-    data_loader=[]
-    data_loader=self.process(frames)
+
+def prediction(frames, model_path='D:\jayesh\predict\pythonProject3\PURE_TSCAN.pth', device='cpu'):
+    data_loader = []
+    data_loader.append(frames)
 
     predictions = dict()
-    self.model = TSCAN(frame_depth=self.frame_depth, img_size=72).to(self.device)
-    self.model = torch.nn.DataParallel(self.model, device_ids=list(range(1)))
-    path='C:/Users/CHANDRASHEKHAR/Desktop/latest/PURE_TSCAN.pth'
+    chunk_len=210
+    #  self.base_len = self.num_of_gpu * self.frame_depth
+    base_len = 1* 10
 
-    self.model.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
-    print("Testing uses pretrained model!")
+    model = TSCAN(frame_depth=10, img_size=72).to(device)
+    model = torch.nn.DataParallel(model, device_ids=list(range(1)))
 
-    self.model = self.model.to(self.config.DEVICE)
-    self.model.eval()
-
-    print("Running model evaluation on the testing dataset!")
+    model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
+    model = model.double()
+    model = model.to(device)
+    model.eval()
 
     with torch.no_grad():
         for _, test_batch in enumerate(tqdm(data_loader, ncols=80)):
             batch_size = data_loader[0].shape[0]
-            data_test = test_batch[0].to(
-                    self.config.DEVICE)
-            N, D, C, H, W = data_test.shape
-            data_test = data_test.view(N * D, C, H, W)
+            data_test = test_batch.to(device,dtype=torch.double)
+            print(type(data_test))
+            print('batch size',batch_size)
+            print('data test shape ', np.array(data_test).shape)
+            N, D,C, H, W  = data_test.shape
+            print(f' N{N}, D{D}, H{H}, W{W} ,C{C} ')
+            data_test = data_test.view(N * D,C, H, W)
 
-            data_test = data_test[:(N * D) // self.base_len * self.base_len]
-            pred_ppg_test = self.model(data_test)
+            data_test = data_test[:(N * D) // base_len * base_len]
+            pred_ppg_test = model(data_test)
 
-            if self.config.TEST.OUTPUT_SAVE_DIR:
-                # labels_test = labels_test.cpu()
-                pred_ppg_test = pred_ppg_test.cpu()
 
-            print("\n batch size: \n ", batch_size)
 
             for idx in range(batch_size):
-
                 subj_index = test_batch[2][idx]
-                print("\n subj_index: \n ", subj_index)
-
                 sort_index = int(test_batch[3][idx])
-                print("\n this is sort_index:  \n",sort_index)
 
                 if subj_index not in predictions.keys():
-                    predictions[subj_index] = dict()        # making dict of predictions
-                    #labels[subj_index] = dict()
-                predictions[subj_index][sort_index] = pred_ppg_test[idx * self.chunk_len:(idx + 1) * self.chunk_len]
-                #labels[subj_index][sort_index] = labels_test[idx * self.chunk_len:(idx + 1) * self.chunk_len]
+                    predictions[subj_index] = dict()
+                    predictions[subj_index][sort_index] = pred_ppg_test[idx * chunk_len:(idx + 1) * chunk_len]
 
     print('')
-    calculate_metrics(predictions,self.config)
-
+    # calculate_metrics(predictions, config)
     pass
 
 
@@ -155,22 +148,31 @@ def prediction(self):
 
 
 if __name__ == "__main__":
-    input_video = "A:/final_project/test/s23/vid_s23_T2.mp4"
+    input_video = "D:/jayesh/predict/pythonProject3/vdo.mp4"
     input_dir = os.path.join(input_video)
     frames= read_video(input_dir)
     #print(len(frames))
 
+ # face processing
     face_processing = FacePreprocessing()
     processed_frames = face_processing.process_frames(frames)
 
     print("\nprocessed frames after MP\n",list(processed_frames.shape))
-
+# frames after processing --> retun noramlize , chunk
     final_frames = process(processed_frames)
     #print("\nfinal frames\n", final_frames)
-    print("\n shape of final\n", final_frames.shape)
+    # print("\n shape of final\n", final_frames.shape)
     #print("\nchunks:\n", chunks)
     #print("\n these are chunks\n", list(chunks.shape))
+# required as tesnor and  to fit in NDCHW data type mode
+    test_data = torch.tensor(final_frames)
+    transposed_dim= np.transpose(test_data, (0, 1, 4, 2, 3))
+
+
+
+    print('after transpose ',transposed_dim.shape)
+    predit_data= prediction(transposed_dim)
+
+
 
     pass
-
-
