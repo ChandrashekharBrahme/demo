@@ -1,13 +1,9 @@
-"""The post processing files for caluclating heart rate using FFT or peak detection.
-The file also  includes helper funcs such as detrend, mag2db etc.
-"""
-
 import numpy as np
 import scipy
 import scipy.io
 from scipy.signal import butter
 from scipy.sparse import spdiags
-import statistics
+from statistics import mean
 
 
 def _next_power_of_2(x):
@@ -51,12 +47,12 @@ def _calculate_peak_hr(ppg_signal, fs):
     return hr_peak
 
 def _calculate_SNR(pred_ppg_signal, hr_label, fs=30, low_pass=0.75, high_pass=2.5):
-    """Calculate SNR as the ratio of the area under the curve of the frequency spectrum around the first and second harmonics 
+    """Calculate SNR as the ratio of the area under the curve of the frequency spectrum around the first and second harmonics
         of the ground truth HR frequency to the area under the curve of the remainder of the frequency spectrum, from 0.75 Hz
-        to 2.5 Hz. 
+        to 2.5 Hz.
 
         Args:
-            pred_ppg_signal(np.array): predicted PPG signal 
+            pred_ppg_signal(np.array): predicted PPG signal
             label_ppg_signal(np.array): ground truth, label PPG signal
             fs(int or float): sampling rate of the video
         Returns:
@@ -91,7 +87,7 @@ def _calculate_SNR(pred_ppg_signal, hr_label, fs=30, low_pass=0.75, high_pass=2.
     signal_power_rem = np.sum(pxx_remainder)
 
     # Calculate the SNR as the ratio of the areas
-    if not signal_power_rem == 0: # catches divide by 0 runtime warning 
+    if not signal_power_rem == 0: # catches divide by 0 runtime warning
         SNR = mag2db((signal_power_hm1 + signal_power_hm2) / signal_power_rem)
     else:
         SNR = 0
@@ -118,6 +114,7 @@ def calculate_metric_per_video(predictions, fs=30, diff_flag=True, use_bandpass=
         #hr_label = _calculate_fft_hr(labels, fs=fs)
         # print(hr_label)
         hr_list.append(hr_pred)
+
         print("hr pred:", hr_pred)
 
 
@@ -132,4 +129,5 @@ def calculate_metric_per_video(predictions, fs=30, diff_flag=True, use_bandpass=
     #print("hr label", hr_label)
 
     #print("SNR", SNR)
+
     return hr_pred
